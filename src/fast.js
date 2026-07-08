@@ -7,10 +7,13 @@ import argon2 from "argon2";
 const fastify = Fastify({
   logger: true
 });
-
+console.log(
+  "process.env.BASE_URL_FRONT_DEVELOPMENT",
+  process.env.BASE_URL_FRONT_DEVELOPMENT
+);
 fastify.register(import("@fastify/cors"), {
   // Allow the Angular dev server at localhost:4200
-  origin: "http://localhost:4200",
+  origin: [process.env.BASE_URL_FRONT_DEVELOPMENT, process.env.BASE_URL_FRONT],
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   // If your front-end sends cookies or uses credentials, set this to true
@@ -20,7 +23,7 @@ fastify.register(import("@fastify/jwt"), {
   secret: "supersecret"
 });
 // Prefer DATABASE_URL from the environment; keep a local fallback for dev.
-const DEFAULT_DB = "postgresql://appuser:change-me-now@187.77.47.69:5432/appdb";
+const DEFAULT_DB = process.env.DATABASE_URL;
 const connectionString = process.env.DATABASE_URL || DEFAULT_DB;
 fastify.register(import("@fastify/postgres"), {
   connectionString
@@ -110,6 +113,7 @@ fastify.post("/signin", async (req, reply) => {
 });
 
 fastify.post("/auth/validate", async (req, reply) => {
+  console.log("hhhhhhhhhhhhhhhhhhhhhheaders", req.headers);
   try {
     const auth = req.headers.authorization || "";
     const parts = auth.split(" ");

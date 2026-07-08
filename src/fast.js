@@ -1,8 +1,10 @@
 // Require the framework and instantiate it
-
 // ESM
 import Fastify from "fastify";
 import argon2 from "argon2";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const fastify = Fastify({
   logger: true

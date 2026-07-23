@@ -64,6 +64,22 @@ fastify.post("/user", async (req, reply) => {
   }
 });
 
+fastify.get("/users", async (req, reply) => {
+  const client = await fastify.pg.connect();
+  console.log("get /users endpoint called");
+  try {
+    const result = await client.query("SELECT * FROM users");
+    console.log("Users retrieved:", result.rows);
+
+    return reply.code(200).send(result.rows);
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
 fastify.post("/signin", async (req, reply) => {
   const body = req.body || {};
   const email = body.email;

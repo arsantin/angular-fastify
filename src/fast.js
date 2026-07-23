@@ -25,8 +25,7 @@ fastify.register(import("@fastify/jwt"), {
   secret: "supersecret"
 });
 // Prefer DATABASE_URL from the environment; keep a local fallback for dev.
-const DEFAULT_DB = process.env.DATABASE_URL;
-const connectionString = process.env.DATABASE_URL || DEFAULT_DB;
+const connectionString = process.env.DATABASE_URL;
 fastify.register(import("@fastify/postgres"), {
   connectionString
 });
@@ -105,6 +104,7 @@ fastify.post("/signin", async (req, reply) => {
       roles: ["user:readonly"]
     });
     fastify.log.info("Generated JWT for user %s", user.email);
+    console.log({ data: { token, email: user.email } });
     return reply.send({ data: { token, email: user.email } });
   } catch (err) {
     fastify.log.error(err);
@@ -115,19 +115,22 @@ fastify.post("/signin", async (req, reply) => {
 });
 
 fastify.post("/auth/validate", async (req, reply) => {
-  console.log("hhhhhhhhhhhhhhhhhhhhhheaders", req.headers);
+  console.log("hhhhhhhhhhhhhhhhhhhhhheaders", req);
   try {
-    const auth = req.headers.authorization || "";
-    const parts = auth.split(" ");
-    if (parts.length !== 2 || parts[0] !== "Bearer") {
-      return reply
-        .code(401)
-        .send({ error: "missing or invalid authorization header" });
-    }
-    const token = parts[1];
+    // const auth = req.headers.authorization || "";
+    // const parts = auth.split(" ");
+    // if (parts.length !== 2 || parts[0] !== "Bearer") {
+    //   return reply
+    //     .code(401)
+    //     .send({ error: "missing or invalid authorization header" });
+    // }
+    // const token = parts[1];
+    const token = req.body.token || parts[1];
+    console.log("Token received for validation:", token);
     let payload;
     try {
       payload = fastify.jwt.verify(token);
+      console.log("JWT verified successfully. Payload:", payload);
     } catch (err) {
       fastify.log.info("JWT verify failed: %o", err);
       return reply.code(401).send({ error: "invalid token" });
@@ -152,4 +155,4 @@ const start = async () => {
   }
 };
 
-start();
+await start();

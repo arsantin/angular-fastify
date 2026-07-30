@@ -69,9 +69,49 @@ fastify.get("/users", async (req, reply) => {
   console.log("get /users endpoint called");
   try {
     const result = await client.query("SELECT * FROM users");
-    console.log("Users retrieved:", result.rows);
 
     return reply.code(200).send(result.rows);
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
+fastify.get("/user/:id", async (req, reply) => {
+  const client = await fastify.pg.connect();
+  console.log("get /user/:id endpoint called");
+  try {
+    const result = await client.query("SELECT * FROM users WHERE id = $1", [
+      req.params.id
+    ]);
+    console.log("User retrieved:", result.rows);
+
+    return reply.code(200).send(result.rows[0]);
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
+fastify.put("/user/:id", async (req, reply) => {
+  const client = await fastify.pg.connect();
+  console.log("put /user/:id endpoint called");
+  try {
+    const result = await client.query("SELECT * FROM users WHERE id = $1", [
+      req.params.id
+    ]);
+    console.log("User retrieved to update:", result.rows);
+    const update = await client.query(
+      "UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *",
+      [req.body.username, req.body.email, req.params.id]
+    );
+    console.log("User updated:", update.rows[0]);
+
+    return reply.code(200).send(update.rows[0]);
   } catch (err) {
     fastify.log.error(err);
     return reply.code(500).send({ error: "internal server error" });

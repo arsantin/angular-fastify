@@ -120,6 +120,29 @@ fastify.put("/user/:id", async (req, reply) => {
   }
 });
 
+fastify.delete("/user/:id", async (req, reply) => {
+  const client = await fastify.pg.connect();
+  console.log("delete /user/:id endpoint called");
+  try {
+    const result = await client.query("SELECT * FROM users WHERE id = $1", [
+      req.params.id
+    ]);
+    console.log("User retrieved to delete:", result.rows);
+    const del = await client.query(
+      "DELETE FROM users WHERE id = $1 RETURNING *",
+      [req.params.id]
+    );
+    console.log("User deleted:", del.rows[0]);
+
+    return reply.code(200).send(del.rows[0]);
+  } catch (err) {
+    fastify.log.error(err);
+    return reply.code(500).send({ error: "internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
 fastify.post("/signin", async (req, reply) => {
   const body = req.body || {};
   const email = body.email;

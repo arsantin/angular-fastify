@@ -1,0 +1,621 @@
+// Require the framework and instantiate it
+// ESM
+import Fastify from "fastify";
+import argon2 from "argon2";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const fastify = Fastify({
+  logger: true
+});
+console.log(process.env);
+
+fastify.register(import("@fastify/cors"), {
+  // Allow the Angular dev server at localhost:4200
+  origin: [
+    // process.env.BASE_URL_FRONT_DEVELOPMENT,
+    // process.env.BASE_URL_FRONT,
+    "https://187.77.47.69:8080",
+    "http://187.77.47.69:8080"
+  ],
+  methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  // If your front-end sends cookies or uses credentials, set this to true
+  credentials: true
+});
+fastify.register(import("@fastify/jwt"), {
+  secret: "supersecret"
+});
+// Prefer DATABASE_URL from the environment; keep a local fallback for dev.
+const connectionString = process.env.DATABASE_URL;
+fastify.register(import("@fastify/postgres"), {
+  connectionString
+});
+
+// Register Swagger plugins BEFORE routes
+await fastify.register(import("@fastify/swagger"), {
+  openapi: {
+    info: {
+      title: "Fastify API",
+      description: "API documentation with Swagger/OpenAPI",
+      version: "1.0.0"
+    }
+  }
+});
+
+await fastify.register(import("@fastify/swagger-ui"), {
+  routePrefix: "/documentation",
+  uiConfig: {
+    docExpansion: "full",
+    deepLinking: false
+  }
+});
+
+fastify.get(
+  "/",
+  {
+    schema: {
+      description: "Health check endpoint",
+      response: {
+        200: {
+          description: "Server is running",
+          type: "object",
+          properties: {
+            hello: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    return { hello: "world" };
+  }
+);
+
+fastify.post(
+  "/user",
+  {
+    schema: {
+      description: "Create a new user with username, email, and password",
+      body: {
+        type: "object",
+        required: ["username", "email", "password"],
+        properties: {
+          username: { type: "string", description: "Unique username" },
+          email: {
+            type: "string",
+            format: "email",
+            description: "User email address"
+          },
+          password: {
+            type: "string",
+            description: "User password (will be hashed)"
+          }
+        }
+      },
+      response: {
+        201: {
+          description: "User created successfully",
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            username: { type: "string" },
+            email: { type: "string" }
+          }
+        },
+        400: {
+          description: "Missing required fields",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log(client);
+    try {
+      const { username, email, password } = req.body;
+      console.log("Received user creation request for username:", username);
+      if (!username || !email || !password) {
+        return reply
+          .code(400)
+          .send({ error: "username, email, and password are required" });
+      }
+
+      const hash = await argon2.hash(password);
+
+      const result = await client.query(
+        "INSERT INTO users (username, email, hash) VALUES ($1, $2, $3) RETURNING id, username, email",
+        [username, email, hash]
+      );
+      console.log("User created with ID:", result.rows[0].id);
+
+      return reply.code(201).send(result.rows[0]);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.get(
+  "/users",
+  {
+    schema: {
+      description: "Get all users",
+      response: {
+        200: {
+          description: "List of users",
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "integer" },
+              username: { type: "string" },
+              email: { type: "string" },
+              hash: { type: "string" }
+            }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log("get /users endpoint called");
+    try {
+      const result = await client.query("SELECT * FROM users");
+
+      return reply.code(200).send(result.rows);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.get(
+  "/products",
+  {
+    schema: {
+      description: "Get all products",
+      response: {
+        200: {
+          description: "List of products",
+          type: "array",
+          items: {
+            type: "object"
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log("get /products endpoint called");
+    try {
+      const result = await client.query("SELECT * FROM products");
+      console.log(
+        "XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+        result.rows
+      );
+      return reply.code(200).send(result.rows);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.get(
+  "/user/:id",
+  {
+    schema: {
+      description: "Get a user by ID",
+      params: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "integer", description: "User ID" }
+        }
+      },
+      response: {
+        200: {
+          description: "User found",
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            username: { type: "string" },
+            email: { type: "string" },
+            hash: { type: "string" }
+          }
+        },
+        404: {
+          description: "User not found"
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log("get /user/:id endpoint called");
+    try {
+      const result = await client.query("SELECT * FROM users WHERE id = $1", [
+        req.params.id
+      ]);
+      console.log("User retrieved:", result.rows);
+
+      return reply.code(200).send(result.rows[0]);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.put(
+  "/user/:id",
+  {
+    schema: {
+      description: "Update a user by ID",
+      params: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "integer", description: "User ID" }
+        }
+      },
+      body: {
+        type: "object",
+        properties: {
+          username: { type: "string" },
+          email: { type: "string", format: "email" }
+        }
+      },
+      response: {
+        200: {
+          description: "User updated successfully",
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            username: { type: "string" },
+            email: { type: "string" },
+            hash: { type: "string" }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log("put /user/:id endpoint called");
+    try {
+      const result = await client.query("SELECT * FROM users WHERE id = $1", [
+        req.params.id
+      ]);
+      console.log("User retrieved to update:", result.rows);
+      const update = await client.query(
+        "UPDATE users SET username = $1, email = $2 WHERE id = $3 RETURNING *",
+        [req.body.username, req.body.email, req.params.id]
+      );
+      console.log("User updated:", update.rows[0]);
+
+      return reply.code(200).send(update.rows[0]);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.delete(
+  "/user/:id",
+  {
+    schema: {
+      description: "Delete a user by ID",
+      params: {
+        type: "object",
+        required: ["id"],
+        properties: {
+          id: { type: "integer", description: "User ID" }
+        }
+      },
+      response: {
+        200: {
+          description: "User deleted successfully",
+          type: "object",
+          properties: {
+            id: { type: "integer" },
+            username: { type: "string" },
+            email: { type: "string" },
+            hash: { type: "string" }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const client = await fastify.pg.connect();
+    console.log("delete /user/:id endpoint called");
+    try {
+      const result = await client.query("SELECT * FROM users WHERE id = $1", [
+        req.params.id
+      ]);
+      console.log("User retrieved to delete:", result.rows);
+      const del = await client.query(
+        "DELETE FROM users WHERE id = $1 RETURNING *",
+        [req.params.id]
+      );
+      console.log("User deleted:", del.rows[0]);
+
+      return reply.code(200).send(del.rows[0]);
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.post(
+  "/signin",
+  {
+    schema: {
+      description:
+        "Authenticate user with email and password, returns JWT token",
+      body: {
+        type: "object",
+        required: ["email", "password"],
+        properties: {
+          email: { type: "string", format: "email", description: "User email" },
+          password: { type: "string", description: "User password" }
+        }
+      },
+      response: {
+        200: {
+          description: "User authenticated successfully",
+          type: "object",
+          properties: {
+            data: {
+              type: "object",
+              properties: {
+                token: { type: "string", description: "JWT token" },
+                email: { type: "string" }
+              }
+            }
+          }
+        },
+        400: {
+          description: "Missing required fields",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        },
+        401: {
+          description: "Invalid credentials",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    const body = req.body || {};
+    const email = body.email;
+    const password = body.password;
+    if (!email || !password) {
+      return reply.code(400).send({ error: "email and password are required" });
+    }
+
+    const client = await fastify.pg.connect();
+    try {
+      // Look up the user by email
+      const res = await client.query(
+        "SELECT id, username, email, hash FROM users WHERE email = $1 LIMIT 1",
+        [email]
+      );
+      if (res.rowCount === 0) {
+        return reply.code(401).send({ error: "invalid credentials" });
+      }
+
+      const user = res.rows[0];
+      // Verify the provided password against stored argon2 hash
+      let verified = false;
+      try {
+        verified = await argon2.verify(user.hash, password);
+      } catch (err) {
+        fastify.log.error("argon2 verify error: %o", err);
+        return reply.code(500).send({ error: "internal server error" });
+      }
+
+      if (!verified) {
+        return reply.code(401).send({ error: "invalid credentials" });
+      }
+
+      // Sign a minimal JWT payload
+      const token = fastify.jwt.sign({
+        id: user.id,
+        email: user.email,
+        roles: ["user:readonly"]
+      });
+      fastify.log.info("Generated JWT for user %s", user.email);
+      console.log({ data: { token, email: user.email } });
+      return reply.send({ data: { token, email: user.email } });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    } finally {
+      client.release();
+    }
+  }
+);
+
+fastify.post(
+  "/auth/validate",
+  {
+    schema: {
+      description: "Validate JWT token from request body",
+      body: {
+        type: "object",
+        properties: {
+          token: { type: "string", description: "JWT token to validate" }
+        }
+      },
+      response: {
+        200: {
+          description: "Token is valid",
+          type: "object",
+          properties: {
+            valid: { type: "boolean" },
+            payload: { type: "object" }
+          }
+        },
+        401: {
+          description: "Invalid token",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        },
+        500: {
+          description: "Internal server error",
+          type: "object",
+          properties: {
+            error: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (req, reply) => {
+    console.log("hhhhhhhhhhhhhhhhhhhhhheaders", req);
+    try {
+      // const auth = req.headers.authorization || "";
+      // const parts = auth.split(" ");
+      // if (parts.length !== 2 || parts[0] !== "Bearer") {
+      //   return reply
+      //     .code(401)
+      //     .send({ error: "missing or invalid authorization header" });
+      // }
+      // const token = parts[1];
+      const token = req.body.token || parts[1];
+      console.log("Token received for validation:", token);
+      let payload;
+      try {
+        payload = fastify.jwt.verify(token);
+        console.log("JWT verified successfully. Payload:", payload);
+      } catch (err) {
+        fastify.log.info("JWT verify failed: %o", err);
+        return reply.code(401).send({ error: "invalid token" });
+      }
+      return reply.send({ valid: true, payload });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.code(500).send({ error: "internal server error" });
+    }
+  }
+);
+
+// Exemplo de rota documentada
+fastify.get(
+  "/ping",
+  {
+    schema: {
+      description: "Rota de teste ping",
+      response: {
+        200: {
+          description: "Resposta bem-sucedida",
+          type: "object",
+          properties: {
+            pong: { type: "string" }
+          }
+        }
+      }
+    }
+  },
+  async (request, reply) => {
+    return { pong: "it works!" };
+  }
+);
+
+// Run the server!
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
+
+const start = async () => {
+  try {
+    const address = await fastify.listen({ port: PORT });
+    fastify.log.info(`Server listening at ${address}`);
+  } catch (err) {
+    fastify.log.error(err);
+    process.exit(1);
+  }
+};
+
+await start();

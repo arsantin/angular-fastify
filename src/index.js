@@ -16,8 +16,7 @@ fastify.register(import("@fastify/cors"), {
   origin: [
     // process.env.BASE_URL_FRONT_DEVELOPMENT,
     // process.env.BASE_URL_FRONT,
-    "https://187.77.47.69:8080",
-    "http://187.77.47.69:8080"
+    "https://187.77.47.69:8080"
   ],
   methods: ["GET", "HEAD", "PUT", "PATCH", "POST", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
